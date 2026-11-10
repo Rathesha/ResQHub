@@ -69,7 +69,42 @@ Municipalities, emergency response networks, and disaster management agencies re
 ---
 
 ## 📂 Project Structure
-emergency/ ├── r2_platform/ # Round 2: Intelligent Emergency Coordination Platform │ ├── app.py # Main server, SQLite schema, REST APIs, and dispatch engine │ ├── dataset.py # Multi-lingual training dataset (English, Tamil script, Tanglish) │ ├── train_model.py # Scikit-learn TF-IDF char n-gram + Logistic Regression trainer │ ├── model.joblib # Pre-compiled high-speed ML severity classifier │ ├── emergency_r2.db # SQLite database (seeded with 5 demo responder units and incidents) │ ├── run_https.py # Self-signed SSL runner for native mobile phone camera/GPS demos │ ├── cert.pem / key.pem # Local SSL certificate pair for HTTPS LAN access │ ├── static/ │ │ ├── css/ │ │ │ └── style.css # Design tokens, hairline 1px borders, 4px radius, IBM Plex fonts │ │ └── js/ │ │ ├── theme.js # Light/Dark mode state management and localStorage persistence │ │ └── i18n.js # Centralized translation dictionary and English/Tamil switcher │ ├── templates/ │ │ ├── citizen.html # Mobile-first citizen SOS reporting form with skippable photo step │ │ ├── track.html # Live dispatch tracker showing assigned vehicle and dotted route │ │ ├── admin.html # Control room operations dashboard with Critical Queue and table │ │ └── responder.html # Mobile responder app with sequential status progression │ └── uploads/ # Secured directory storing authenticated emergency evidence photos │ ├── backend/ # Round 1: FastAPI Legacy Microservice Architecture │ ├── main.py # FastAPI entry point, SQLite models, and basic triage routes │ ├── requirements.txt # FastAPI backend dependencies │ └── emergency.db # Legacy Round 1 database file │ ├── frontend/ # Round 1: React Single-Page Application Client │ ├── index.html # Tailwind + React 18 browser client │ └── serve.py # Lightweight local Python HTTP server │ ├── run_round2.bat # 1-Click Windows batch script to start ResQHub Platform (Port 5000) ├── run_phone_https.bat # 1-Click Windows batch script to launch HTTPS server for mobile phones ├── run_backend.bat # Legacy launcher for FastAPI backend ├── run_frontend.bat # Legacy launcher for React client ├── .gitignore # Ignores local SQLite journals, virtualenvs, and temporary upload caches └── README.md # Main platform technical documentation
+ResQHub/
+├── r2_platform/                  # Core Round 2 Intelligent Dispatch Architecture
+│   ├── app.py                    # Main Flask application, REST API routes, and dispatch engine
+│   ├── dataset.py                # Multi-lingual training dataset (English, Tamil script, Tanglish)
+│   ├── train_model.py            # Scikit-learn TF-IDF char n-gram + Logistic Regression trainer
+│   ├── model.joblib              # Pre-compiled high-speed ML severity classifier
+│   ├── emergency_r2.db           # SQLite3 database (seeded with 5 demo responder units)
+│   ├── run_https.py              # Self-signed SSL server runner for native mobile phone testing
+│   ├── cert.pem / key.pem        # SSL certificate pair for HTTPS LAN access
+│   ├── static/
+│   │   ├── css/style.css         # Design tokens, hairline 1px borders, 4px radius, IBM Plex fonts
+│   │   └── js/
+│   │       ├── theme.js          # Light/Dark mode state management and localStorage persistence
+│   │       └── i18n.js           # Centralized translation dictionary and English/Tamil switcher
+│   ├── templates/
+│   │   ├── citizen.html          # Mobile-first citizen SOS form with skippable photo step
+│   │   ├── track.html            # Live dispatch tracker: assigned vehicle and dotted route
+│   │   ├── admin.html            # Control room dashboard with Critical Queue and dense table
+│   │   └── responder.html        # Mobile responder app with sequential status progression
+│   └── uploads/                  # Secured directory storing emergency evidence photos
+│
+├── backend/                      # Round 1 Microservice Prototype (FastAPI)
+│   ├── main.py                   # FastAPI app, SQLAlchemy models, and basic triage routes
+│   ├── requirements.txt          # FastAPI backend dependency manifest
+│   └── emergency.db              # Legacy Round 1 SQLite database
+│
+├── frontend/                     # Round 1 Client Prototype (React)
+│   ├── index.html                # Tailwind CSS + React 18 browser client
+│   └── serve.py                  # Lightweight local Python HTTP server
+│
+├── run_round2.bat                # 1-click Windows launcher for ResQHub (Port 5000)
+├── run_phone_https.bat           # 1-click Windows launcher for HTTPS server (phone testing)
+├── run_backend.bat               # Legacy launcher for FastAPI backend (Port 8000)
+├── run_frontend.bat              # Legacy launcher for React client (Port 5173)
+├── .gitignore                    # Ignores SQLite journals, virtual environments, and caches
+└── README.md                     # Main platform documentationREADME.md # Main platform technical documentation
 
 
 ---
