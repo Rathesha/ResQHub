@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRISISGUARD — Emergency Response & Disaster Management Platform</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            },
+            hazard: {
+              critical: '#dc2626',
+              high: '#ea580c',
+              medium: '#d97706',
+              low: '#16a34a'
+            }
+          },
+          animation: {
+            'pulse-fast': 'pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes subtlePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+    }
+    .critical-pulse-card {
+      animation: subtlePulse 2s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased selection:bg-rose-500 selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const API_BASE = "http://localhost:8000/api";
+
+    // Category options mapping with icons & colors
+    const CATEGORIES = [
+      { id: "Fire Emergency", label: "Fire Emergency", icon: "flame", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/30" },
+      { id: "Road Accident", label: "Road Accident", icon: "car", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30" },
+      { id: "Medical Emergency", label: "Medical Emergency", icon: "cross", color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/30" },
+      { id: "Flood", label: "Flood", icon: "droplets", color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/30" },
+      { id: "Building Collapse", label: "Building Collapse", icon: "building", color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30" },
+      { id: "Other", label: "Other Hazard", icon: "alert-triangle", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/30" },
+    ];
+
+    // Statuses
+    const STATUS_LIST = ["Reported", "Pending", "In Progress", "Resolved"];
+
+    // Severity client preview logic mirroring backend automated severity engine
+    function calculateClientSeverity(category, people) {
+      const cat = (category || "").trim().toLowerCase();
+      const count = Math.max(0, parseInt(people) || 0);
+
+      const criticalCats = ["building collapse", "fire emergency", "flood"];
+      const urgentCats = ["road accident", "medical emergency"];
+
+      if (count >= 10) return "Critical";
+
+      if (criticalCats.includes(cat)) {
+        if (count >= 3) return "Critical";
+        if (count >= 1) return "High";
+        return "Medium";
+      }
+
+      if (urgentCats.includes(cat)) {
+        if (count >= 5) return "Critical";
+        if (count >= 2) return "High";
+        if (count === 1) return "Medium";
+        return "Low";
+      }
+
+      if (count >= 5) return "High";
+      if (count >= 2) return "Medium";
+      return "Low";
+    }
+
+    // Helper for rendering Lucide icons inside React
+    function Icon({ name, className = "w-4 h-4", ...props }) {
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
+      return <i data-lucide={name} className={className} {...props}></i>;
+    }
+
+    // Badge styling for Severities
+    function SeverityBadge({ severity }) {
+      switch (severity) {
+        case "Critical":
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-950/80 text-red-400 border border-red-500/50 shadow-sm shadow-red-950">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              CRITICAL
+            </span>
+          );
+        case "High":
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-950/60 text-orange-400 border border-orange-500/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+              HIGH
+            </span>
+          );
+        case "Medium":
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/60 text-amber-400 border border-amber-500/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              MEDIUM
+            </span>
+          );
+        default:
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-500/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              LOW
+            </span>
+          );
+      }
+    }
+
+    // Badge styling for Statuses
+    function StatusBadge({ status }) {
+      const styles = {
+        "Reported": "bg-slate-800 text-slate-300 border-slate-700",
+        "Pending": "bg-amber-950/70 text-amber-300 border-amber-600/40",
+        "In Progress": "bg-blue-950/70 text-blue-300 border-blue-600/40",
+        "Resolved": "bg-emerald-950/70 text-emerald-300 border-emerald-600/40",
+      };
+      return (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border ${styles[status] || styles["Reported"]}`}>
+          {status}
+        </span>
+      );
+    }
+
+    // MAIN APP COMPONENT
+    function App() {
+      const [activeTab, setActiveTab] = useState("admin"); // 'admin' | 'report'
+      const [incidents, setIncidents] = useState([]);
+      const [stats, setStats] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [backendOnline, setBackendOnline] = useState(true);
+      const [toast, setToast] = useState(null);
+
+      // Filters
+      const [filterStatus, setFilterStatus] = useState("All");
+      const [filterSeverity, setFilterSeverity] = useState("All");
+      const [filterCategory, setFilterCategory] = useState("All");
+      const [searchTerm, setSearchTerm] = useState("");
+
+      // Detail Modal
+      const [selectedIncident, setSelectedIncident] = useState(null);
+
+      // Toast banner
+      const showToast = (message, type = "success") => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4500);
+      };
+
+      // Fetch incidents & stats
+      const loadData = async () => {
+        setLoading(true);
+        try {
+          const [incRes, statsRes] = await Promise.all([
+            fetch(`${API_BASE}/incidents`),
+            fetch(`${API_BASE}/stats`)
+          ]);
+          if (!incRes.ok || !statsRes.ok) throw new Error("Backend connection issue");
+          const incData = await incRes.json();
+          const statsData = await statsRes.json();
+          setIncidents(incData);
+          setStats(statsData);
+          setBackendOnline(true);
+        } catch (err) {
+          console.error("Data load failed", err);
+          setBackendOnline(false);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        loadData();
+        const interval = setInterval(loadData, 10000); // 10s live polling
+        return () => clearInterval(interval);
+      }, []);
+
+      // Handle Status Update
+      const handleStatusChange = async (incidentId, newStatus) => {
+        try {
+          const res = await fetch(`${API_BASE}/incidents/${incidentId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus })
+          });
+          if (!res.ok) throw new Error("Failed to update status");
+          const updated = await res.json();
+          showToast(`Incident #${incidentId} status updated to "${newStatus}"`, "success");
+          loadData();
+          if (selectedIncident && selectedIncident.id === incidentId) {
+            setSelectedIncident(updated);
+          }
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      // Handle Delete
+      const handleDelete = async (incidentId) => {
+        if (!confirm(`Are you sure you want to delete Incident #${incidentId}? This is useful for removing test/duplicate data.`)) {
+          return;
+        }
+        try {
+          const res = await fetch(`${API_BASE}/incidents/${incidentId}`, { method: "DELETE" });
+          if (!res.ok) throw new Error("Failed to delete record");
+          showToast(`Record #${incidentId} deleted successfully.`, "info");
+          if (selectedIncident && selectedIncident.id === incidentId) {
+            setSelectedIncident(null);
+          }
+          loadData();
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      // Client filtered incidents
+      const filteredIncidents = useMemo(() => {
+        return incidents.filter(item => {
+          if (filterStatus !== "All" && item.status !== filterStatus) return false;
+          if (filterSeverity !== "All" && item.severity !== filterSeverity) return false;
+          if (filterCategory !== "All" && item.category !== filterCategory) return false;
+          if (searchTerm) {
+            const query = searchTerm.toLowerCase();
+            const matchTitle = item.title.toLowerCase().includes(query);
+            const matchLoc = item.location.toLowerCase().includes(query);
+            const matchDesc = item.description.toLowerCase().includes(query);
+            if (!matchTitle && !matchLoc && !matchDesc) return false;
+          }
+          return true;
+        });
+      }, [incidents, filterStatus, filterSeverity, filterCategory, searchTerm]);
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-950 font-sans">
+          {/* Top Banner & Header */}
+          <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 flex items-center justify-center shadow-lg shadow-red-900/30">
+                  <Icon name="shield-alert" className="w-6 h-6 text-white stroke-[2.2]" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-black tracking-wider uppercase text-white flex items-center gap-2">
+                    CRISISGUARD
+                    <span className="text-[10px] font-semibold tracking-normal px-2 py-0.5 rounded bg-red-900/60 text-red-300 border border-red-700/50">
+                      LIVE DISPATCH
+                    </span>
+                  </h1>
+                  <p className="text-xs text-slate-400">Emergency Response & Disaster Management System</p>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex items-center gap-2 sm:gap-4">
+                <nav className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 text-xs sm:text-sm">
+                  <button
+                    onClick={() => setActiveTab("admin")}
+                    className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-medium transition ${
+                      activeTab === "admin"
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon name="layout-dashboard" className="w-4 h-4" />
+                    <span>Admin Command Center</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("report")}
+                    className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-medium transition ${
+                      activeTab === "report"
+                        ? "bg-rose-600 text-white shadow-md shadow-rose-900/40"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon name="plus-circle" className="w-4 h-4" />
+                    <span>Report Emergency</span>
+                  </button>
+                </nav>
+
+                {/* Connection status indicator */}
+                <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 pl-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${backendOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`}></span>
+                  <span>{backendOnline ? 'API Connected' : 'Offline'}</span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Toast Notification */}
+          {toast && (
+            <div className="fixed bottom-6 right-6 z-50 transition-all transform animate-bounce">
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm ${
+                toast.type === "error" ? "bg-red-900/90 text-red-200 border-red-700" :
+                toast.type === "info" ? "bg-blue-900/90 text-blue-200 border-blue-700" :
+                "bg-emerald-900/90 text-emerald-200 border-emerald-700"
+              }`}>
+                <Icon name={toast.type === "error" ? "alert-circle" : "check-circle"} className="w-5 h-5" />
+                <span>{toast.message}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Main Content Area */}
+          <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+            {activeTab === "report" ? (
+              <PublicEmergencyForm 
+                onSuccess={() => {
+                  loadData();
+                  setActiveTab("admin");
+                  showToast("Emergency incident reported and classified! Switched to Command Center.", "success");
+                }} 
+              />
+            ) : (
+              <AdminDashboard 
+                stats={stats}
+                incidents={filteredIncidents}
+                allIncidentsCount={incidents.length}
+                loading={loading}
+                filterStatus={filterStatus}
+                setFilterStatus={setFilterStatus}
+                filterSeverity={filterSeverity}
+                setFilterSeverity={setFilterSeverity}
+                filterCategory={filterCategory}
+                setFilterCategory={setFilterCategory}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                onRefresh={loadData}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+                onSelectIncident={(inc) => setSelectedIncident(inc)}
+                onOpenReport={() => setActiveTab("report")}
+              />
+            )}
+          </main>
+
+          {/* Incident Detail Modal */}
+          {selectedIncident && (
+            <IncidentModal 
+              incident={selectedIncident} 
+              onClose={() => setSelectedIncident(null)}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {/* Footer */}
+          <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
+            Emergency Response & Disaster Management System • Fast Incident Triage & Automated Severity Engine • Round 1 Build
+          </footer>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MODULE 1 & 2: PUBLIC EMERGENCY REPORTING FORM
+    // ==========================================
+    function PublicEmergencyForm({ onSuccess }) {
+      const [title, setTitle] = useState("");
+      const [description, setDescription] = useState("");
+      const [category, setCategory] = useState("Fire Emergency");
+      const [location, setLocation] = useState("");
+      const [peopleAffected, setPeopleAffected] = useState(0);
+      const [contactInfo, setContactInfo] = useState("");
+      const [submitting, setSubmitting] = useState(false);
+      const [error, setError] = useState(null);
+
+      // Automated Severity Engine - Live calculation preview
+      const previewSeverity = useMemo(() => {
+        return calculateClientSeverity(category, peopleAffected);
+      }, [category, peopleAffected]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+
+        if (!title.trim() || !description.trim() || !location.trim()) {
+          setError("Please fill in all required fields (Title, Description, and Location).");
+          return;
+        }
+
+        setSubmitting(true);
+        try {
+          const res = await fetch(`${API_BASE}/incidents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: title.trim(),
+              description: description.trim(),
+              category,
+              location: location.trim(),
+              people_affected: parseInt(peopleAffected) || 0,
+              contact_info: contactInfo.trim() || null
+            })
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || "Failed to submit emergency report");
+          }
+
+          onSuccess();
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      // Quick location helper button (simulates GPS)
+      const detectLocation = () => {
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setLocation(`Coordinates: ${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E`);
+            },
+            () => {
+              setLocation("Sector 7, North Central Avenue (GPS pinpointed)");
+            }
+          );
+        } else {
+          setLocation("Sector 7, North Central Avenue");
+        }
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto">
+          {/* Card Wrapper */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header banner */}
+            <div className="bg-gradient-to-r from-red-950 via-slate-900 to-slate-900 p-6 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <span className="p-3 bg-red-600/20 text-red-500 rounded-xl border border-red-500/30">
+                  <Icon name="bell-ring" className="w-6 h-6 stroke-[2.2]" />
+                </span>
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-tight">Public Emergency Dispatch Form</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Immediate SOS alert submission. All reports undergo real-time automated severity evaluation.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
+              {error && (
+                <div className="p-4 rounded-xl bg-red-950/70 border border-red-700/60 text-red-300 text-sm flex items-start gap-3">
+                  <Icon name="alert-triangle" className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-semibold">Submission Error:</strong> {error}
+                  </div>
+                </div>
+              )}
+
+              {/* 1. Incident Title */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Incident Title <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Major Gas Leak Explosion, Multi-Vehicle Highway Crash..."
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Category selection with visual grid */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Emergency Category <span className="text-red-400">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = category === cat.id;
+                    return (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => setCategory(cat.id)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition ${
+                          isSelected
+                            ? "bg-slate-800 border-rose-500 ring-2 ring-rose-500/30 text-white"
+                            : "bg-slate-950/50 border-slate-800 text-slate-300 hover:bg-slate-800/50 hover:border-slate-700"
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${cat.bg} ${cat.color}`}>
+                          <Icon name={cat.icon} className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-medium leading-tight">{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Location with GPS quick-fill */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Exact Location / Landmark <span className="text-red-400">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={detectLocation}
+                    className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                  >
+                    <Icon name="crosshair" className="w-3.5 h-3.5" />
+                    <span>Auto-Detect GPS</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3.5 text-slate-500">
+                    <Icon name="map-pin" className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 45th West Avenue, near City Hospital Crossroad..."
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Number of People Affected + Live Severity Engine Preview */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                    Number of People Affected <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-3.5 text-slate-500">
+                      <Icon name="users" className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={peopleAffected}
+                      onChange={(e) => setPeopleAffected(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition font-mono"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">Estimate count of injured, trapped, or imperiled citizens.</p>
+                </div>
+
+                {/* Severity Classification Engine Card */}
+                <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                      <Icon name="cpu" className="w-3.5 h-3.5 text-cyan-400" />
+                      Automated Severity Engine
+                    </span>
+                    <SeverityBadge severity={previewSeverity} />
+                  </div>
+                  <div className="text-xs text-slate-400 mt-2">
+                    <p className="leading-relaxed">
+                      Evaluated on category risk factor (<span className="text-slate-200 font-semibold">{category}</span>) & scale (<span className="text-slate-200 font-mono font-semibold">{peopleAffected} affected</span>).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Incident Description */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Detailed Situation Description <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  rows="3"
+                  required
+                  placeholder="Provide immediate hazard context: trapped individuals, smoke levels, visible casualties, access bottlenecks..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                ></textarea>
+              </div>
+
+              {/* 6. Optional Contact Info */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Reporter Contact Info <span className="text-slate-500 font-normal lowercase">(optional callback info)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3.5 text-slate-500">
+                    <Icon name="phone" className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Phone number, VHF Radio channel, or on-site agency..."
+                    value={contactInfo}
+                    onChange={(e) => setContactInfo(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-950/50 transition transform active:scale-[0.99] disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <Icon name="loader-2" className="w-5 h-5 animate-spin" />
+                      <span>Transmitting SOS Dispatch...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="send" className="w-5 h-5" />
+                      <span>Transmit Emergency Incident</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MODULE 3: ADMINISTRATIVE DASHBOARD & MANAGEMENT PANEL
+    // ==========================================
+    function AdminDashboard({
+      stats,
+      incidents,
+      allIncidentsCount,
+      loading,
+      filterStatus,
+      setFilterStatus,
+      filterSeverity,
+      setFilterSeverity,
+      filterCategory,
+      setFilterCategory,
+      searchTerm,
+      setSearchTerm,
+      onRefresh,
+      onStatusChange,
+      onDelete,
+      onSelectIncident,
+      onOpenReport
+    }) {
+      return (
+        <div className="space-y-6">
+          {/* Top Control Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                Emergency Command Center
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                  {incidents.length} active shown
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Real-time emergency monitoring, priority triage, and incident lifecycle management</p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={onRefresh}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 border border-slate-700 transition"
+              >
+                <Icon name="rotate-cw" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh Feed</span>
+              </button>
+
+              <button
+                onClick={onOpenReport}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-rose-950/40 transition"
+              >
+                <Icon name="plus" className="w-4 h-4 stroke-[2.5]" />
+                <span>New SOS Report</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Top Summary Cards (Module 3 requirement) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Incidents */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl relative overflow-hidden shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Incidents</span>
+                <span className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20">
+                  <Icon name="layers" className="w-5 h-5" />
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-white font-mono">{stats ? stats.total_incidents : 0}</span>
+                <span className="text-xs text-slate-500">logged</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">Across all operational zones</div>
+              <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-blue-500/5 rounded-full blur-xl pointer-events-none"></div>
+            </div>
+
+            {/* Critical Incidents */}
+            <div className="bg-slate-900 border-2 border-red-600/70 p-5 rounded-2xl relative overflow-hidden shadow-xl shadow-red-950/30">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                  Critical Severity
+                </span>
+                <span className="p-2.5 bg-red-500/20 text-red-400 rounded-xl border border-red-500/40">
+                  <Icon name="alert-octagon" className="w-5 h-5" />
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-red-400 font-mono">{stats ? stats.critical_incidents : 0}</span>
+                <span className="text-xs text-red-500/80 font-semibold">Immediate Action</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">Highest life safety risk priority</div>
+              <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-red-600/10 rounded-full blur-xl pointer-events-none"></div>
+            </div>
+
+            {/* Pending Incidents */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl relative overflow-hidden shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Pending Review</span>
+                <span className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
+                  <Icon name="clock" className="w-5 h-5" />
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-amber-300 font-mono">{stats ? stats.pending_incidents : 0}</span>
+                <span className="text-xs text-slate-500">awaiting team</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">Unassigned or standby status</div>
+              <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none"></div>
+            </div>
+
+            {/* Resolved Incidents */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl relative overflow-hidden shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Resolved</span>
+                <span className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                  <Icon name="check-circle-2" className="w-5 h-5" />
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-emerald-400 font-mono">{stats ? stats.resolved_incidents : 0}</span>
+                <span className="text-xs text-emerald-500/80">Secured</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">Threat cleared & confirmed safe</div>
+              <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl pointer-events-none"></div>
+            </div>
+          </div>
+
+          {/* Category Breakdown Panel (Module 3 requirement) */}
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Icon name="pie-chart" className="w-4 h-4 text-blue-400" />
+                Incident Breakdown By Category
+              </span>
+              <span className="text-xs text-slate-500 normal-case">Real-time disaster telemetry</span>
+            </h3>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {CATEGORIES.map((cat) => {
+                const count = stats && stats.category_breakdown ? (stats.category_breakdown[cat.id] || 0) : 0;
+                const total = stats ? (stats.total_incidents || 1) : 1;
+                const percentage = Math.round((count / (total || 1)) * 100);
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => setFilterCategory(filterCategory === cat.id ? "All" : cat.id)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                      filterCategory === cat.id
+                        ? "bg-slate-800 border-blue-500 ring-2 ring-blue-500/30"
+                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`p-1.5 rounded-lg ${cat.bg} ${cat.color}`}>
+                        <Icon name={cat.icon} className="w-4 h-4" />
+                      </div>
+                      <span className="text-base font-bold text-white font-mono">{count}</span>
+                    </div>
+                    <div className="text-xs font-medium text-slate-300 truncate">{cat.label}</div>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                      <div 
+                        className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Incident Management Table & Filter Controls */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden">
+            {/* Filters Bar */}
+            <div className="p-4 border-b border-slate-800 bg-slate-900/90 flex flex-wrap gap-3 items-center justify-between">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[220px]">
+                <span className="absolute left-3 top-2.5 text-slate-500">
+                  <Icon name="search" className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search incident title, location, details..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-400">Status:</span>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="All">All Statuses</option>
+                  {STATUS_LIST.map(st => <option key={st} value={st}>{st}</option>)}
+                </select>
+              </div>
+
+              {/* Severity Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-400">Severity:</span>
+                <select
+                  value={filterSeverity}
+                  onChange={(e) => setFilterSeverity(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="All">All Severities</option>
+                  <option value="Critical">Critical</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(filterStatus !== "All" || filterSeverity !== "All" || filterCategory !== "All" || searchTerm) && (
+                <button
+                  onClick={() => {
+                    setFilterStatus("All");
+                    setFilterSeverity("All");
+                    setFilterCategory("All");
+                    setSearchTerm("");
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline pl-1"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-950/70 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                    <th className="py-3.5 px-4 w-16">ID</th>
+                    <th className="py-3.5 px-4">Incident & Description</th>
+                    <th className="py-3.5 px-4">Category</th>
+                    <th className="py-3.5 px-4">Location</th>
+                    <th className="py-3.5 px-4 text-center">Affected</th>
+                    <th className="py-3.5 px-4 text-center">Severity</th>
+                    <th className="py-3.5 px-4">Status & Dispatch</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {incidents.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="py-12 text-center text-slate-500">
+                        <Icon name="inbox" className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm font-medium">No incidents match the selected filter criteria.</p>
+                        <p className="text-xs text-slate-600 mt-1">Try adjusting the filter options or submit a new report.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    incidents.map((item) => {
+                      const isCritical = item.severity === "Critical";
+                      return (
+                        <tr
+                          key={item.id}
+                          className={`transition ${
+                            isCritical
+                              ? "bg-red-950/20 hover:bg-red-950/30 border-l-4 border-l-red-500"
+                              : "hover:bg-slate-800/40 border-l-4 border-l-transparent"
+                          }`}
+                        >
+                          {/* ID */}
+                          <td className="py-4 px-4 font-mono font-bold text-slate-400">
+                            #{item.id}
+                          </td>
+
+                          {/* Title & Description */}
+                          <td className="py-4 px-4 max-w-xs">
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              {isCritical && (
+                                <Icon name="flame" className="w-3.5 h-3.5 text-red-400 animate-pulse shrink-0" />
+                              )}
+                              <span className="truncate">{item.title}</span>
+                            </div>
+                            <p className="text-slate-400 line-clamp-1 mt-0.5 text-[11px]">{item.description}</p>
+                            {item.contact_info && (
+                              <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
+                                <Icon name="phone" className="w-3 h-3" />
+                                {item.contact_info}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-slate-300 bg-slate-800/80 border border-slate-700/60 font-medium">
+                              {item.category}
+                            </span>
+                          </td>
+
+                          {/* Location */}
+                          <td className="py-4 px-4 max-w-[180px]">
+                            <div className="flex items-center gap-1.5 text-slate-300">
+                              <Icon name="map-pin" className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span className="truncate">{item.location}</span>
+                            </div>
+                          </td>
+
+                          {/* People Affected */}
+                          <td className="py-4 px-4 text-center">
+                            <span className={`font-mono font-bold px-2 py-0.5 rounded text-xs ${
+                              item.people_affected >= 10 ? 'bg-red-900/60 text-red-300' :
+                              item.people_affected >= 3 ? 'bg-orange-900/60 text-orange-300' :
+                              'bg-slate-800 text-slate-300'
+                            }`}>
+                              {item.people_affected}
+                            </span>
+                          </td>
+
+                          {/* Severity Badge (Visually prominent for Critical) */}
+                          <td className="py-4 px-4 text-center whitespace-nowrap">
+                            <SeverityBadge severity={item.severity} />
+                          </td>
+
+                          {/* Status Dropdown */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <select
+                              value={item.status}
+                              onChange={(e) => onStatusChange(item.id, e.target.value)}
+                              className="bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-medium"
+                            >
+                              {STATUS_LIST.map(st => (
+                                <option key={st} value={st}>{st}</option>
+                              ))}
+                            </select>
+                          </td>
+
+                          {/* Actions: View Details & Delete Record */}
+                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => onSelectIncident(item)}
+                                title="Inspect Details"
+                                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                              >
+                                <Icon name="eye" className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => onDelete(item.id)}
+                                title="Delete Record"
+                                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition"
+                              >
+                                <Icon name="trash-2" className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // INCIDENT DETAIL MODAL
+    // ==========================================
+    function IncidentModal({ incident, onClose, onStatusChange, onDelete }) {
+      const isCritical = incident.severity === "Critical";
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className={`bg-slate-900 border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl ${
+            isCritical ? 'border-red-600 ring-2 ring-red-600/30' : 'border-slate-800'
+          }`}>
+            {/* Modal Header */}
+            <div className={`p-6 flex items-start justify-between border-b ${
+              isCritical ? 'bg-red-950/40 border-red-900/60' : 'bg-slate-950/60 border-slate-800'
+            }`}>
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="font-mono text-xs font-bold text-slate-400">INCIDENT #{incident.id}</span>
+                  <SeverityBadge severity={incident.severity} />
+                  <StatusBadge status={incident.status} />
+                </div>
+                <h3 className="text-xl font-bold text-white">{incident.title}</h3>
+              </div>
+              <button 
+                onClick={onClose}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <Icon name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-5 text-sm">
+              <div>
+                <h4 className="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1">Description</h4>
+                <p className="text-slate-200 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
+                  {incident.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-400 block mb-1">Category</span>
+                  <span className="font-semibold text-white">{incident.category}</span>
+                </div>
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-400 block mb-1">Affected Individuals</span>
+                  <span className="font-mono font-bold text-white text-base">{incident.people_affected} people</span>
+                </div>
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-400 block mb-1">Location Coordinates / Address</span>
+                  <span className="text-white flex items-center gap-1.5">
+                    <Icon name="map-pin" className="w-3.5 h-3.5 text-rose-400" />
+                    {incident.location}
+                  </span>
+                </div>
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-400 block mb-1">Reporter / Emergency Contact</span>
+                  <span className="text-white flex items-center gap-1.5">
+                    <Icon name="phone" className="w-3.5 h-3.5 text-blue-400" />
+                    {incident.contact_info || "None provided"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Status Update Dropdown in Modal */}
+              <div className="pt-2 flex items-center justify-between border-t border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400 font-medium">Update Status:</span>
+                  <select
+                    value={incident.status}
+                    onChange={(e) => onStatusChange(incident.id, e.target.value)}
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    {STATUS_LIST.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onDelete(incident.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 hover:bg-red-950/50 border border-red-800/50 transition flex items-center gap-1.5"
+                  >
+                    <Icon name="trash-2" className="w-3.5 h-3.5" />
+                    <span>Delete Record</span>
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render root
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ResQHub — Report Emergency</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/i18n.js"></script>
+</head>
+<body class="min-h-screen flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] pb-12 selection:bg-red-600 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-resq bg-[#dc2626] flex items-center justify-center text-white font-mono font-bold text-base shadow-sm">
+        RQ
+      </div>
+      <div class="flex flex-col">
+        <span class="font-extrabold text-base tracking-tight leading-none">ResQHub</span>
+      </div>
+    </div>
+
+    <!-- LANGUAGE SWITCHER AT TOP (English | தமிழ்) -->
+    <div class="flex items-center gap-2">
+      <div class="flex items-center bg-[var(--bg-card-subtle)] border border-[var(--border-color)] p-0.5 rounded-resq">
+        <button id="lang-en-btn" onclick="setLanguage('en')" class="px-2 py-0.5 rounded-resq text-[11px] font-bold">EN</button>
+        <button id="lang-ta-btn" onclick="setLanguage('ta')" class="px-2 py-0.5 rounded-resq text-[11px] font-medium">தமிழ்</button>
+      </div>
+      <button onclick="toggleTheme()" class="p-1.5 rounded-resq border border-[var(--border-color)] bg-[var(--bg-card)] text-xs" title="Toggle Theme">
+        <span id="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- IMMINENT DANGER BANNER (Always visible line) -->
+  <div class="bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-900/60 px-4 py-2">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-1.5 text-red-700 dark:text-red-400 font-semibold">
+        <span>⚠️</span>
+        <span data-i18n="emergencyWarning">If life is in immediate danger, call 112.</span>
+      </div>
+      <a href="tel:112" class="px-2.5 py-1 rounded-resq bg-red-600 hover:bg-red-700 text-white font-mono font-bold text-xs shrink-0">
+        112
+      </a>
+    </div>
+  </div>
+
+  <!-- MAIN VIEW CONTAINER -->
+  <main class="flex-1 max-w-xl mx-auto w-full px-4 py-4 space-y-4">
+
+    <!-- FAST PATH BUTTON (Report now) -->
+    <div id="fast-path-box" class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-3.5 shadow-sm">
+      <button type="button" onclick="activateFastPath()" class="w-full py-3 px-4 bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-sm rounded-resq flex items-center justify-center gap-2 transition active:scale-[0.99]">
+        <span>🚨</span>
+        <span data-i18n="reportNow">Report now</span>
+      </button>
+      <p class="text-[11px] text-[var(--text-muted)] text-center mt-2" data-i18n="quickPrompt">
+        Quickly tell us what happened
+      </p>
+    </div>
+
+    <!-- REPORTING FORM -->
+    <form id="emergency-form" onsubmit="event.preventDefault(); submitForm();" class="space-y-4">
+
+      <!-- Honeypot -->
+      <div style="display:none !important;" aria-hidden="true">
+        <input type="text" id="website_check" name="website_check" tabindex="-1">
+      </div>
+
+      <!-- STEP 1: Emergency Category Tiles -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-2.5 shadow-sm">
+        <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+          <span data-i18n="categoryLabel">Emergency Category</span> <span class="text-red-600">*</span>
+        </label>
+
+        <div class="grid grid-cols-3 gap-2" id="category-tiles">
+          <button type="button" onclick="setCategory('Fire Emergency')" class="cat-tile p-3 rounded-resq border-2 border-red-600 bg-red-500/10 text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Fire Emergency">
+            <span class="text-xl">🔥</span>
+            <span class="text-xs font-bold" data-i18n="fire">Fire</span>
+          </button>
+          <button type="button" onclick="setCategory('Road Accident')" class="cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Road Accident">
+            <span class="text-xl">🚗</span>
+            <span class="text-xs font-semibold" data-i18n="roadAccident">Road Accident</span>
+          </button>
+          <button type="button" onclick="setCategory('Medical Emergency')" class="cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Medical Emergency">
+            <span class="text-xl">🏥</span>
+            <span class="text-xs font-semibold" data-i18n="medical">Medical</span>
+          </button>
+          <button type="button" onclick="setCategory('Flood')" class="cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Flood">
+            <span class="text-xl">🌊</span>
+            <span class="text-xs font-semibold" data-i18n="flood">Flood</span>
+          </button>
+          <button type="button" onclick="setCategory('Building Collapse')" class="cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Building Collapse">
+            <span class="text-xl">🏢</span>
+            <span class="text-xs font-semibold" data-i18n="buildingCollapse">Building Collapse</span>
+          </button>
+          <button type="button" onclick="setCategory('Other')" class="cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]" data-cat="Other">
+            <span class="text-xl">⚠️</span>
+            <span class="text-xs font-semibold" data-i18n="other">Other</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Incident Title & Location -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-3 shadow-sm">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
+            <span data-i18n="incidentTitle">Incident Title</span> <span class="text-red-600">*</span>
+          </label>
+          <input type="text" id="incident-title" required oninput="calculateLiveSeverity()" class="w-full bg-[var(--bg-card-subtle)] border border-[var(--border-color)] rounded-resq px-3 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-red-600" data-i18n="incidentTitlePlaceholder">
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              <span data-i18n="locationLabel">Location</span> <span class="text-red-600">*</span>
+            </label>
+            <button type="button" onclick="detectGPSLocation()" class="text-[11px] text-blue-600 hover:underline flex items-center gap-1 font-semibold">
+              <span>📍</span>
+              <span data-i18n="detectGPS">Detect my live location</span>
+            </button>
+          </div>
+          <input type="text" id="incident-location" required class="w-full bg-[var(--bg-card-subtle)] border border-[var(--border-color)] rounded-resq px-3 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-red-600" data-i18n="locationPlaceholder">
+          <div id="gps-status" class="text-[10px] text-[var(--text-muted)] mt-1 font-mono"></div>
+        </div>
+
+        <!-- Optional Map Pinning -->
+        <div id="pin-map-container" class="w-full h-36 rounded-resq border border-[var(--border-color)] z-10"></div>
+      </div>
+
+      <!-- STEP 3: People Affected & Optional Details -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-3 shadow-sm">
+        <!-- People Affected Stepper (+ / -) -->
+        <div class="flex items-center justify-between p-2.5 rounded-resq bg-[var(--bg-card-subtle)] border border-[var(--border-color)]">
+          <div>
+            <span class="text-xs font-bold block" data-i18n="peopleAffected">People Affected</span>
+            <span class="text-[10px] text-[var(--text-muted)]">Injured, trapped, or imperiled</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <button type="button" onclick="adjustPeople(-1)" class="w-8 h-8 rounded-resq bg-[var(--bg-card)] border border-[var(--border-color)] font-mono font-bold text-sm flex items-center justify-center">-</button>
+            <span id="people-count" class="font-mono font-bold text-sm w-6 text-center">0</span>
+            <button type="button" onclick="adjustPeople(1)" class="w-8 h-8 rounded-resq bg-[var(--bg-card)] border border-[var(--border-color)] font-mono font-bold text-sm flex items-center justify-center">+</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1" data-i18n="descriptionLabel">
+            Description (Optional)
+          </label>
+          <textarea id="incident-desc" rows="2" oninput="calculateLiveSeverity()" class="w-full bg-[var(--bg-card-subtle)] border border-[var(--border-color)] rounded-resq px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-red-600" data-i18n="descriptionPlaceholder"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1" data-i18n="contactLabel">
+            Reporter Phone (Optional)
+          </label>
+          <input type="tel" id="contact-info" class="w-full bg-[var(--bg-card-subtle)] border border-[var(--border-color)] rounded-resq px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-red-600" data-i18n="contactPlaceholder">
+        </div>
+      </div>
+
+      <!-- STEP 4 (MOVED TO END, OPTIONAL & SKIPPABLE): Camera / Image Capture -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-3 shadow-sm">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]" data-i18n="cameraLabel">
+            Evidence Photo (Optional)
+          </label>
+          <span class="text-[10px] font-semibold text-[var(--text-muted)] bg-[var(--bg-card-subtle)] px-2 py-0.5 rounded-resq">
+            OPTIONAL
+          </span>
+        </div>
+        <p class="text-[11px] text-[var(--text-muted)]" data-i18n="cameraSubtext">
+          Capture a live photo of the scene or upload image file
+        </p>
+
+        <!-- Viewfinder Canvas Area -->
+        <div class="relative w-full aspect-video bg-black rounded-resq overflow-hidden flex items-center justify-center border border-[var(--border-color)]">
+          <video id="camera-stream" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
+          <canvas id="photo-canvas" class="hidden w-full h-full object-cover"></canvas>
+          <div id="camera-placeholder" class="text-center p-3">
+            <span class="text-3xl block mb-1">📷</span>
+            <p class="text-xs text-slate-300">Tap below to open camera or select file</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" id="start-cam-btn" onclick="startCamera()" class="flex-1 py-2 px-3 bg-[var(--bg-card-subtle)] border border-[var(--border-color)] hover:border-red-600 text-xs font-bold rounded-resq flex items-center justify-center gap-1.5">
+            <span data-i18n="startCamera">Open Camera</span>
+          </button>
+          <button type="button" id="snap-btn" onclick="takeSnapshot()" class="hidden flex-1 py-2 px-3 bg-red-600 text-white text-xs font-bold rounded-resq flex items-center justify-center gap-1.5">
+            <span data-i18n="captureFrame">Capture Frame</span>
+          </button>
+          <button type="button" id="retake-btn" onclick="retakePhoto()" class="hidden py-2 px-3 bg-[var(--bg-card-subtle)] border border-[var(--border-color)] text-xs font-semibold rounded-resq">
+            Retake
+          </button>
+          <!-- Regular file picker fallback -->
+          <label class="py-2 px-3 bg-[var(--bg-card-subtle)] border border-[var(--border-color)] text-xs font-semibold rounded-resq cursor-pointer">
+            📁 File
+            <input type="file" id="file-picker" accept="image/*" onchange="handleFileSelect(event)" class="hidden">
+          </label>
+        </div>
+
+        <div id="photo-status" class="text-[11px] text-[var(--text-muted)] text-center font-mono"></div>
+      </div>
+
+      <!-- LIVE SEVERITY INDICATOR BAR -->
+      <div class="p-3 rounded-resq bg-[var(--bg-card)] border border-[var(--border-color)] flex items-center justify-between text-xs">
+        <span class="text-[var(--text-secondary)] font-semibold">Triage Severity (Auto-detected):</span>
+        <div id="live-severity-badge" class="font-mono font-bold px-2 py-0.5 rounded-resq text-xs bg-amber-500/15 text-amber-600 border border-amber-500/40">
+          HIGH
+        </div>
+      </div>
+
+      <!-- SUBMIT BUTTON -->
+      <button type="submit" id="submit-btn" class="w-full py-3.5 px-4 bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-sm rounded-resq shadow-sm flex items-center justify-center gap-2 transition active:scale-[0.99]">
+        <span>🚨</span>
+        <span id="submit-btn-text" data-i18n="submitReport">Submit Report</span>
+      </button>
+
+      <!-- Network status badge -->
+      <div class="text-center text-[11px] text-[var(--text-muted)] flex items-center justify-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span data-i18n="workingOnline">Working online</span>
+      </div>
+    </form>
+
+    <!-- CONFIRMATION SCREEN (Calm, reassuring, tracking RQ-XXXX) -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-resq bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-2xl font-bold">
+            ✓
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base" data-i18n="reportConfirmed">Emergency Report Logged</h3>
+            <span class="font-mono text-xs text-[var(--text-muted)]" id="confirm-tracking-id">RQ-0000</span>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-resq bg-[var(--bg-card-subtle)] border border-[var(--border-color)] space-y-1.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-[var(--text-muted)]" data-i18n="assignedSeverity">Assigned Severity:</span>
+            <span id="confirm-severity" class="font-mono font-bold text-red-500">CRITICAL</span>
+          </div>
+          <div class="text-[11px] text-[var(--text-secondary)]">
+            <b data-i18n="severityReason">Triage Evaluation:</b> <span id="confirm-reason">High casualty acute threat</span>
+          </div>
+        </div>
+
+        <!-- Honest Alert Notification Message -->
+        <div id="confirm-alert-msg" class="p-3 rounded-resq bg-blue-500/10 border border-blue-500/30 text-xs text-blue-600 dark:text-blue-400 font-medium">
+          Loading notification telemetry...
+        </div>
+
+        <div class="pt-2 flex flex-col gap-2">
+          <button type="button" id="track-report-btn" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-resq text-center">
+            <span data-i18n="trackLive">Track Live Dispatch</span> →
+          </button>
+          <a href="tel:112" class="w-full py-2 px-4 border border-[var(--border-color)] text-[var(--text-secondary)] font-bold text-xs rounded-resq text-center">
+            <span data-i18n="call112Btn">Call 112 Directly</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let selectedCategory = "Fire Emergency";
+    let peopleAffected = 0;
+    let currentLat = 13.0560; // Default Chennai
+    let currentLng = 80.2520;
+    let photoBase64 = null;
+    let photoTimestamp = null;
+    let map = null;
+    let userMarker = null;
+    let mediaStream = null;
+
+    function initMap() {
+      map = L.map('pin-map-container').setView([currentLat, currentLng], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+      userMarker = L.marker([currentLat, currentLng], { draggable: true }).addTo(map);
+      userMarker.on('dragend', (e) => {
+        const pos = userMarker.getLatLng();
+        currentLat = pos.lat;
+        currentLng = pos.lng;
+        document.getElementById('gps-status').innerText = `Pin set: ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+      });
+      map.on('click', (e) => {
+        userMarker.setLatLng(e.latlng);
+        currentLat = e.latlng.lat;
+        currentLng = e.latlng.lng;
+        document.getElementById('gps-status').innerText = `Pin set: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+      });
+    }
+
+    function setCategory(cat) {
+      selectedCategory = cat;
+      document.querySelectorAll('.cat-tile').forEach(btn => {
+        if (btn.dataset.cat === cat) {
+          btn.className = "cat-tile p-3 rounded-resq border-2 border-red-600 bg-red-500/10 text-center flex flex-col items-center justify-center gap-1 min-h-[64px]";
+        } else {
+          btn.className = "cat-tile p-3 rounded-resq border border-[var(--border-color)] text-center flex flex-col items-center justify-center gap-1 min-h-[64px]";
+        }
+      });
+      calculateLiveSeverity();
+    }
+
+    function adjustPeople(delta) {
+      peopleAffected = Math.max(0, peopleAffected + delta);
+      document.getElementById('people-count').innerText = peopleAffected;
+      calculateLiveSeverity();
+    }
+
+    function calculateLiveSeverity() {
+      const title = (document.getElementById('incident-title').value || "").toLowerCase();
+      const desc = (document.getElementById('incident-desc').value || "").toLowerCase();
+      const text = title + " " + desc;
+
+      const dangerKw = ['trapped', 'collapse', 'explosion', 'fire', 'blast', 'dead', 'burn', 'thee', 'neruppu', 'ratham', 'maatikitanga'];
+      const hasDanger = dangerKw.some(kw => text.includes(kw));
+
+      let sev = "Low";
+      if (peopleAffected >= 10 || (['Building Collapse', 'Fire Emergency', 'Flood'].includes(selectedCategory) && (peopleAffected >= 3 || hasDanger))) {
+        sev = "Critical";
+      } else if (['Road Accident', 'Medical Emergency'].includes(selectedCategory) && (peopleAffected >= 2 || hasDanger)) {
+        sev = "High";
+      } else if (hasDanger || peopleAffected >= 1) {
+        sev = "Medium";
+      }
+
+      const badge = document.getElementById('live-severity-badge');
+      badge.innerText = sev.toUpperCase();
+      if (sev === "Critical") {
+        badge.className = "font-mono font-bold px-2 py-0.5 rounded-resq text-xs bg-red-500/20 text-red-600 border border-red-500/50";
+      } else if (sev === "High") {
+        badge.className = "font-mono font-bold px-2 py-0.5 rounded-resq text-xs bg-amber-500/20 text-amber-600 border border-amber-500/50";
+      } else if (sev === "Medium") {
+        badge.className = "font-mono font-bold px-2 py-0.5 rounded-resq text-xs bg-yellow-500/20 text-yellow-600 border border-yellow-500/50";
+      } else {
+        badge.className = "font-mono font-bold px-2 py-0.5 rounded-resq text-xs bg-emerald-500/20 text-emerald-600 border border-emerald-500/50";
+      }
+    }
+
+    function detectGPSLocation() {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            currentLat = pos.coords.latitude;
+            currentLng = pos.coords.longitude;
+            if (userMarker) userMarker.setLatLng([currentLat, currentLng]);
+            if (map) map.setView([currentLat, currentLng], 15);
+            document.getElementById('incident-location').value = `GPS Pinpoint (${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
+            document.getElementById('gps-status').innerText = `Live GPS detected (±${Math.round(pos.coords.accuracy)}m)`;
+          },
+          (err) => {
+            document.getElementById('gps-status').innerText = "GPS unavailable. Type landmark or drag pin.";
+          }
+        );
+      }
+    }
+
+    function activateFastPath() {
+      // Focus directly on location and title
+      document.getElementById('incident-title').focus();
+    }
+
+    // Camera handling
+    async function startCamera() {
+      const video = document.getElementById('camera-stream');
+      const placeholder = document.getElementById('camera-placeholder');
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = mediaStream;
+        video.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        document.getElementById('start-cam-btn').classList.add('hidden');
+        document.getElementById('snap-btn').classList.remove('hidden');
+      } catch (err) {
+        document.getElementById('photo-status').innerText = "Camera not available: use File picker.";
+      }
+    }
+
+    function takeSnapshot() {
+      const video = document.getElementById('camera-stream');
+      const canvas = document.getElementById('photo-canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      photoTimestamp = Date.now();
+      photoBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      video.classList.add('hidden');
+      canvas.classList.remove('hidden');
+      document.getElementById('snap-btn').classList.add('hidden');
+      document.getElementById('retake-btn').classList.remove('hidden');
+      document.getElementById('photo-status').innerText = "Photo frame captured.";
+    }
+
+    function retakePhoto() {
+      photoBase64 = null;
+      document.getElementById('photo-canvas').classList.add('hidden');
+      document.getElementById('camera-placeholder').classList.remove('hidden');
+      document.getElementById('retake-btn').classList.add('hidden');
+      document.getElementById('start-cam-btn').classList.remove('hidden');
+      document.getElementById('photo-status').innerText = "";
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        photoBase64 = evt.target.result;
+        photoTimestamp = Date.now();
+        document.getElementById('camera-placeholder').classList.add('hidden');
+        document.getElementById('photo-status').innerText = `File loaded: ${file.name}`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function submitForm() {
+      const title = document.getElementById('incident-title').value.trim();
+      const location = document.getElementById('incident-location').value.trim();
+      const desc = document.getElementById('incident-desc').value.trim();
+      const contact = document.getElementById('contact-info').value.trim();
+      const honeypot = document.getElementById('website_check').value;
+
+      if (!title || !location) {
+        alert("Please provide Incident Title and Location.");
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      document.getElementById('submit-btn-text').innerText = t('submitting');
+
+      const payload = {
+        title,
+        description: desc || title,
+        category: selectedCategory,
+        lat: currentLat,
+        lng: currentLng,
+        landmark: location,
+        location_source: "gps",
+        people_affected: peopleAffected,
+        contact_info: contact,
+        photo_base64: photoBase64,
+        photo_timestamp: photoTimestamp,
+        website_check: honeypot
+      };
+
+      try {
+        const res = await fetch('/api/reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          // Show Calm Confirmation Modal with honest alert count
+          document.getElementById('confirm-tracking-id').innerText = data.tracking_code || `RQ-${data.incident_id}`;
+          document.getElementById('confirm-severity').innerText = data.final_severity.toUpperCase();
+          document.getElementById('confirm-reason').innerText = `${data.final_severity} priority assigned based on ${selectedCategory} with ${peopleAffected} affected.`;
+
+          const alertMsgBox = document.getElementById('confirm-alert-msg');
+          if (data.alerts_sent > 0) {
+            alertMsgBox.innerHTML = `🚨 <b>${data.alerts_sent}</b> ${t('alertsSent')}`;
+            alertMsgBox.className = "p-3 rounded-resq bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-600 dark:text-emerald-400 font-medium";
+          } else {
+            alertMsgBox.innerHTML = `⏳ ${t('noUnitsQueued')}`;
+            alertMsgBox.className = "p-3 rounded-resq bg-amber-500/10 border border-amber-500/30 text-xs text-amber-600 dark:text-amber-400 font-medium";
+          }
+
+          document.getElementById('track-report-btn').onclick = () => {
+            window.location.href = `/track/${data.incident_id}`;
+          };
+
+          document.getElementById('confirmation-modal').classList.remove('hidden');
+        } else {
+          alert("Submission error: " + (data.error || "Server issue"));
+          submitBtn.disabled = false;
+          document.getElementById('submit-btn-text').innerText = t('submitReport');
+        }
+      } catch (err) {
+        alert("Network error: " + err.message);
+        submitBtn.disabled = false;
+        document.getElementById('submit-btn-text').innerText = t('submitReport');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      calculateLiveSeverity();
+    });
+  </script>
+</body>
+</html>

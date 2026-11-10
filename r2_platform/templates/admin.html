@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResQHub — Control Room Command Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/i18n.js"></script>
+</head>
+<body class="min-h-screen bg-[#0d1117] text-[#f1f5f9] flex font-sans selection:bg-red-600 selection:text-white theme-dark" data-theme="dark">
+
+  <!-- Audio Beep for New Critical Alerts -->
+  <audio id="alert-sound" preload="auto">
+    <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLn7N7855KAYqe8vt14InBSt1x+rLfi8IKmvD5s+DLQspd77lyX8wCC9yut7BfTIKL2+21sF9NAovebDQvHk2CStwtc24ejYJK3CuxrV3NAkqaafCsnIzCSdlmcGpbS4HJmSUvqVlLQ==" type="audio/wav">
+  </audio>
+
+  <!-- SLIM ICON RAIL ON LEFT (Requirement 2: not a wide sidebar) -->
+  <aside class="w-14 bg-[#11141a] border-r border-[#242c3f] flex flex-col items-center py-4 justify-between shrink-0 z-30">
+    <div class="flex flex-col items-center gap-6">
+      <!-- App Brand Icon -->
+      <div class="w-9 h-9 rounded-resq bg-[#dc2626] flex items-center justify-center font-mono font-bold text-white text-sm shadow-sm" title="ResQHub Ops">
+        RQ
+      </div>
+
+      <!-- Icon Nav Rail -->
+      <nav class="flex flex-col items-center gap-4 text-slate-400">
+        <a href="/admin" class="p-2 rounded-resq bg-[#1c2333] text-white border border-[#333d54]" title="Command Dashboard">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        </a>
+        <a href="/" target="_blank" class="p-2 rounded-resq hover:bg-[#1c2333] hover:text-white transition" title="Citizen Form">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        </a>
+        <a href="/responder" target="_blank" class="p-2 rounded-resq hover:bg-[#1c2333] hover:text-white transition" title="Responder Dispatch">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </a>
+      </nav>
+    </div>
+
+    <!-- Theme & Sound toggles -->
+    <div class="flex flex-col items-center gap-3">
+      <button id="sound-btn" onclick="toggleAudioMute()" class="p-2 rounded-resq text-slate-400 hover:text-white text-xs" title="Toggle Alert Siren">
+        <span id="sound-icon">🔊</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN OPS WORKSPACE -->
+  <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+
+    <!-- ONE-LINE STATUS STRIP AT THE TOP IN MONOSPACE (Requirement 2) -->
+    <header class="bg-[#11141a] border-b border-[#242c3f] px-4 py-2 flex items-center justify-between text-xs font-mono">
+      <div class="flex items-center gap-2 text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="status-strip-text">Loading telemetry...</span>
+      </div>
+
+      <div class="flex items-center gap-4 text-[11px] text-slate-400">
+        <!-- Language Switcher -->
+        <div class="flex items-center bg-[#1c2333] border border-[#242c3f] p-0.5 rounded-resq">
+          <button id="lang-en-btn" onclick="setLanguage('en')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-bold">EN</button>
+          <button id="lang-ta-btn" onclick="setLanguage('ta')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-medium">தமிழ்</button>
+        </div>
+
+        <span id="clock-display" class="font-mono text-slate-300">--:--:--</span>
+        <span class="px-2 py-0.5 rounded-resq bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">● Live</span>
+      </div>
+    </header>
+
+    <!-- DISTINCTIVE KPI STRIP WITHOUT ICONS (Requirement 8) -->
+    <section class="bg-[#11141a] border-b border-[#242c3f] px-4 py-2.5">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <!-- Total -->
+        <div class="p-3 rounded-resq bg-[#161b26] border border-[#242c3f]">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">Total Incidents</span>
+          <div id="kpi-total" class="font-mono font-bold text-xl text-white mt-1">0</div>
+        </div>
+
+        <!-- Critical (Red reserved for Critical only) -->
+        <div class="p-3 rounded-resq bg-[#161b26] border border-red-900/60 sev-bar-critical">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-red-500 font-bold">Critical Severity</span>
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+          </div>
+          <div id="kpi-critical" class="font-mono font-bold text-xl text-red-500 mt-1">0</div>
+        </div>
+
+        <!-- Pending (Amber) -->
+        <div class="p-3 rounded-resq bg-[#161b26] border border-[#242c3f] sev-bar-high">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-amber-500 block">Pending Response</span>
+          <div id="kpi-pending" class="font-mono font-bold text-xl text-amber-500 mt-1">0</div>
+        </div>
+
+        <!-- Resolved (Gray-Green) -->
+        <div class="p-3 rounded-resq bg-[#161b26] border border-[#242c3f] sev-bar-low">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-500 block">Resolved / Secured</span>
+          <div id="kpi-resolved" class="font-mono font-bold text-xl text-emerald-400 mt-1">0</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2-COLUMN SECTION: Critical Queue (2/3) + Ranked Horizontal Bar List (1/3) -->
+    <div class="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+      <!-- DOMINANT CRITICAL QUEUE (2/3 width) -->
+      <div class="lg:col-span-8 bg-[#161b26] border border-[#242c3f] rounded-resq overflow-hidden shadow-sm flex flex-col">
+        <div class="p-3 bg-[#11141a] border-b border-[#242c3f] flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Critical Queue (<span id="critical-count" class="font-mono">0</span>)</h2>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500">Live elapsed timer since reported</span>
+        </div>
+
+        <div class="overflow-x-auto flex-1">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="bg-[#11141a]/60 text-slate-400 font-mono uppercase border-b border-[#242c3f] text-[10px]">
+                <th class="py-2.5 px-3">ID</th>
+                <th class="py-2.5 px-3">Location</th>
+                <th class="py-2.5 px-3">Issue</th>
+                <th class="py-2.5 px-3">Reported</th>
+                <th class="py-2.5 px-3">Elapsed</th>
+                <th class="py-2.5 px-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="critical-queue-tbody" class="divide-y divide-[#242c3f]">
+              <tr>
+                <td colspan="6" class="p-6 text-center text-slate-500 font-mono">No critical incidents pending.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- INCIDENTS BY CATEGORY (1/3 width: Ranked Horizontal Bar List, NOT a donut chart) -->
+      <div class="lg:col-span-4 bg-[#161b26] border border-[#242c3f] rounded-resq p-3.5 shadow-sm flex flex-col justify-between">
+        <div class="border-b border-[#242c3f] pb-2 mb-3 flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Incidents by Category</h2>
+          <span class="text-[10px] font-mono text-slate-500">Ranked distribution</span>
+        </div>
+
+        <div id="category-bars-container" class="space-y-3 flex-1 flex flex-col justify-around">
+          <!-- Dynamic bars rendered via JS -->
+          <div class="text-xs text-slate-500 font-mono">Loading category distribution...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TACTICAL MAP CONTAINER -->
+    <div class="px-4 pb-4">
+      <div class="bg-[#161b26] border border-[#242c3f] rounded-resq overflow-hidden shadow-sm">
+        <div class="p-2.5 bg-[#11141a] border-b border-[#242c3f] flex items-center justify-between text-xs">
+          <span class="font-mono font-bold text-slate-300">Tactical Geographic Telemetry</span>
+          <div class="flex items-center gap-3 text-[10px] font-mono text-slate-400">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-red-600 inline-block"></span> Critical</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-600 inline-block"></span> High</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-blue-600 inline-block"></span> Responder Team</span>
+          </div>
+        </div>
+        <div id="tactical-map" class="w-full h-56 z-10"></div>
+      </div>
+    </div>
+
+    <!-- DENSE FULL-WIDTH INCIDENT TABLE (Requirement 2) -->
+    <div class="px-4 pb-8">
+      <div class="bg-[#161b26] border border-[#242c3f] rounded-resq overflow-hidden shadow-sm">
+        <!-- Table Controls & Filters -->
+        <div class="p-3 bg-[#11141a] border-b border-[#242c3f] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2">
+            <h2 class="font-bold text-slate-200">All Open Incidents</h2>
+            <span id="all-incidents-count" class="font-mono text-xs text-slate-400">(0)</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- Status Filter -->
+            <select id="filter-status" onchange="applyFilters()" class="bg-[#1c2333] border border-[#242c3f] rounded-resq px-2 py-1 text-xs text-slate-300 font-mono">
+              <option value="All">Status: All</option>
+              <option value="Reported">Reported</option>
+              <option value="Assigned">Assigned</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+
+            <!-- Category Filter -->
+            <select id="filter-category" onchange="applyFilters()" class="bg-[#1c2333] border border-[#242c3f] rounded-resq px-2 py-1 text-xs text-slate-300 font-mono">
+              <option value="All">Category: All</option>
+              <option value="Fire Emergency">Fire</option>
+              <option value="Road Accident">Road Accident</option>
+              <option value="Medical Emergency">Medical</option>
+              <option value="Flood">Flood</option>
+              <option value="Building Collapse">Building Collapse</option>
+              <option value="Other">Other</option>
+            </select>
+
+            <!-- Severity Filter -->
+            <select id="filter-severity" onchange="applyFilters()" class="bg-[#1c2333] border border-[#242c3f] rounded-resq px-2 py-1 text-xs text-slate-300 font-mono">
+              <option value="All">Severity: All</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Dense Table with 3px Severity Bar on Left Edge -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-[#11141a]/60 text-slate-400 font-mono uppercase border-b border-[#242c3f] text-[10px]">
+                <th class="py-2.5 px-3">ID</th>
+                <th class="py-2.5 px-3">Reported</th>
+                <th class="py-2.5 px-3">Location</th>
+                <th class="py-2.5 px-3">Issue</th>
+                <th class="py-2.5 px-3">Severity</th>
+                <th class="py-2.5 px-3">Status</th>
+                <th class="py-2.5 px-3">Assigned To</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="dense-incident-tbody" class="divide-y divide-[#242c3f]">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SCREEN 3: INCIDENT DETAIL MODAL (With Timeline, Status Control, & Delete behind Confirm) -->
+  <div id="detail-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#161b26] border border-[#242c3f] rounded-resq max-w-2xl w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-start justify-between border-b border-[#242c3f] pb-3">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-mono text-xs font-bold text-red-500" id="modal-id">RQ-0000</span>
+            <span id="modal-severity-badge" class="font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq border">CRITICAL</span>
+          </div>
+          <h3 class="font-bold text-base text-white" id="modal-title">Incident Title</h3>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 text-sm font-mono">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <div class="space-y-3">
+          <div>
+            <span class="text-[10px] font-mono text-slate-400 block uppercase">Location & Landmark</span>
+            <div id="modal-location" class="font-mono text-slate-200 mt-0.5">--</div>
+          </div>
+
+          <div>
+            <span class="text-[10px] font-mono text-slate-400 block uppercase">Situation Description</span>
+            <div id="modal-desc" class="p-2.5 rounded-resq bg-[#11141a] border border-[#242c3f] text-slate-300 mt-1 leading-relaxed">--</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+            <div class="p-2 rounded-resq bg-[#11141a] border border-[#242c3f]">
+              <span class="text-slate-500 block">Affected</span>
+              <b id="modal-affected" class="text-white">0</b>
+            </div>
+            <div class="p-2 rounded-resq bg-[#11141a] border border-[#242c3f]">
+              <span class="text-slate-500 block">Trust Score</span>
+              <b id="modal-trust" class="text-emerald-400">100%</b>
+            </div>
+          </div>
+
+          <!-- Status Control -->
+          <div class="pt-2 border-t border-[#242c3f]">
+            <label class="block text-[10px] font-mono uppercase text-slate-400 mb-1">Update Status:</label>
+            <div class="flex items-center gap-2">
+              <select id="modal-status-select" class="flex-1 bg-[#1c2333] border border-[#242c3f] rounded-resq px-2.5 py-1.5 text-xs text-white font-mono">
+                <option value="Reported">Reported</option>
+                <option value="Assigned">Assigned</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+              <button onclick="saveModalStatus()" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-resq font-mono">
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Timeline & Evidence Photo -->
+        <div class="space-y-3">
+          <div>
+            <span class="text-[10px] font-mono text-slate-400 block uppercase mb-1">Status Timeline</span>
+            <div id="modal-timeline" class="p-2.5 rounded-resq bg-[#11141a] border border-[#242c3f] space-y-2 text-[11px] font-mono">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Evidence Photo -->
+          <div class="rounded-resq overflow-hidden border border-[#242c3f] bg-black">
+            <img id="modal-photo" src="" alt="Evidence" class="w-full aspect-video object-cover" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x225/111/fff?text=Verified+Evidence+Photo';">
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer with Delete behind confirm dialog -->
+      <div class="pt-3 border-t border-[#242c3f] flex items-center justify-between">
+        <button onclick="deleteModalIncident()" class="px-3 py-1.5 border border-red-500/40 text-red-500 hover:bg-red-950/40 rounded-resq text-xs font-mono font-bold">
+          Delete Incident Record
+        </button>
+        <button onclick="closeModal()" class="px-4 py-1.5 bg-[#1c2333] hover:bg-[#242c3f] text-slate-300 rounded-resq text-xs font-mono">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let incidents = [];
+    let dispatches = [];
+    let responders = [];
+    let selectedIncidentId = null;
+    let map = null;
+    let markers = {};
+    let audioMuted = false;
+
+    function toggleAudioMute() {
+      audioMuted = !audioMuted;
+      document.getElementById('sound-icon').innerText = audioMuted ? '🔇' : '🔊';
+    }
+
+    function initMap() {
+      map = L.map('tactical-map').setView([13.0560, 80.2400], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock-display').innerText = now.toTimeString().split(' ')[0];
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    async function pollAdminData() {
+      try {
+        const [repRes, statsRes, respRes] = await Promise.all([
+          fetch('/api/reports'),
+          fetch('/api/stats'),
+          fetch('/api/responders')
+        ]);
+
+        if (repRes.ok) {
+          const data = await repRes.json();
+          incidents = data.incidents || [];
+          dispatches = data.dispatches || [];
+          renderCriticalQueue();
+          renderDenseTable();
+          updateTacticalMap();
+          updateStatusStrip();
+        }
+
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          document.getElementById('kpi-total').innerText = stats.total_incidents;
+          document.getElementById('kpi-critical').innerText = stats.critical_incidents;
+          document.getElementById('kpi-pending').innerText = (stats.total_incidents - stats.resolved_incidents - stats.critical_incidents);
+          document.getElementById('kpi-resolved').innerText = stats.resolved_incidents;
+          renderCategoryBars(stats.category_distribution || {});
+        }
+
+        if (respRes.ok) {
+          const rData = await respRes.json();
+          responders = rData.responders || [];
+        }
+      } catch (err) {
+        console.error("Admin poll error:", err);
+      }
+    }
+
+    function updateStatusStrip() {
+      const total = incidents.length;
+      const criticalCount = incidents.filter(i => i.final_severity === 'Critical').length;
+      let oldestMins = 0;
+
+      const openIncidents = incidents.filter(i => i.status !== 'Resolved');
+      if (openIncidents.length > 0) {
+        const oldest = openIncidents[openIncidents.length - 1];
+        oldestMins = Math.max(1, Math.round((Date.now() - new Date(oldest.created_at).getTime()) / 60000));
+      }
+
+      document.getElementById('status-strip-text').innerText = 
+        `${total} open · ${criticalCount} critical · oldest unresolved ${oldestMins}m`;
+    }
+
+    function renderCriticalQueue() {
+      const tbody = document.getElementById('critical-queue-tbody');
+      const criticals = incidents.filter(i => i.final_severity === 'Critical');
+      document.getElementById('critical-count').innerText = criticals.length;
+
+      if (criticals.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500 font-mono">No critical incidents pending.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = criticals.map(inc => {
+        const elapsedMins = Math.max(1, Math.round((Date.now() - new Date(inc.created_at).getTime()) / 60000));
+        const timeStr = new Date(inc.created_at).toTimeString().substring(0, 5);
+        const isUnack = (inc.status === 'Reported');
+
+        return `
+          <tr class="hover:bg-[#1c2333]/50 transition sev-bar-critical ${isUnack ? 'pulse-unack-critical' : ''}">
+            <td class="py-2.5 px-3 font-mono font-bold text-red-500">RQ-${String(inc.id).padStart(4, '0')}</td>
+            <td class="py-2.5 px-3 text-slate-300 font-mono truncate max-w-[140px]">${inc.landmark || 'Chennai'}</td>
+            <td class="py-2.5 px-3 font-semibold text-white truncate max-w-[200px]">${inc.title}</td>
+            <td class="py-2.5 px-3 font-mono text-slate-400">${timeStr}</td>
+            <td class="py-2.5 px-3 font-mono font-bold text-red-500">${elapsedMins}m</td>
+            <td class="py-2.5 px-3 text-right">
+              <button onclick="openModal(${inc.id})" class="px-2.5 py-1 bg-[#1c2333] hover:bg-red-600 hover:text-white border border-[#242c3f] rounded-resq text-[11px] font-mono font-bold transition">
+                Take Action
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderCategoryBars(distribution) {
+      const container = document.getElementById('category-bars-container');
+      const cats = [
+        { label: "Road Accident", key: "Road Accident", color: "bg-red-500" },
+        { label: "Fire Emergency", key: "Fire Emergency", color: "bg-amber-500" },
+        { label: "Medical Emergency", key: "Medical Emergency", color: "bg-yellow-500" },
+        { label: "Building Collapse", key: "Building Collapse", color: "bg-orange-500" },
+        { label: "Flood", key: "Flood", color: "bg-blue-500" },
+        { label: "Other", key: "Other", color: "bg-slate-500" }
+      ];
+
+      const total = incidents.length || 1;
+
+      // Sort by highest count
+      cats.sort((a, b) => (distribution[b.key] || 0) - (distribution[a.key] || 0));
+
+      container.innerHTML = cats.map(c => {
+        const count = distribution[c.key] || 0;
+        const pct = Math.round((count / total) * 100);
+        return `
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-[11px] font-mono">
+              <span class="text-slate-300 font-medium">${c.label}</span>
+              <span class="text-slate-400 font-bold">${count}</span>
+            </div>
+            <div class="w-full h-1.5 bg-[#11141a] rounded-resq overflow-hidden border border-[#242c3f]">
+              <div class="h-full ${c.color} transition-all duration-500" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderDenseTable() {
+      const tbody = document.getElementById('dense-incident-tbody');
+      const filtered = getFilteredIncidents();
+      document.getElementById('all-incidents-count').innerText = `(${filtered.length})`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 font-mono">No incidents match current filter criteria.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(inc => {
+        const elapsedMins = Math.max(1, Math.round((Date.now() - new Date(inc.created_at).getTime()) / 60000));
+        const timeStr = new Date(inc.created_at).toTimeString().substring(0, 5);
+
+        let sevClass = "sev-bar-low text-emerald-400";
+        if (inc.final_severity === "Critical") sevClass = "sev-bar-critical text-red-500 font-bold";
+        else if (inc.final_severity === "High") sevClass = "sev-bar-high text-amber-500 font-bold";
+        else if (inc.final_severity === "Medium") sevClass = "sev-bar-medium text-yellow-500 font-semibold";
+
+        const assignedDispatch = dispatches.find(d => d.incident_id === inc.id && d.claimed_by);
+        const assignedName = assignedDispatch ? (assignedDispatch.responder_name || 'Assigned') : '—';
+
+        return `
+          <tr class="hover:bg-[#1c2333]/50 transition ${sevClass.split(' ')[0]}">
+            <td class="py-2 px-3 font-mono font-bold text-slate-300">RQ-${String(inc.id).padStart(4, '0')}</td>
+            <td class="py-2 px-3 font-mono text-slate-400">${timeStr} (${elapsedMins}m)</td>
+            <td class="py-2 px-3 font-mono text-slate-300 truncate max-w-[140px]">${inc.landmark || 'Chennai'}</td>
+            <td class="py-2 px-3 font-semibold text-white truncate max-w-[220px]">${inc.title}</td>
+            <td class="py-2 px-3 font-mono ${sevClass.split(' ')[1]}">${inc.final_severity}</td>
+            <td class="py-2 px-3 font-mono text-xs">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full ${inc.status === 'Resolved' ? 'bg-emerald-500' : inc.status === 'In Progress' ? 'bg-purple-500' : inc.status === 'Assigned' ? 'bg-blue-500' : 'bg-amber-500'}"></span>
+                <span>${inc.status}</span>
+              </span>
+            </td>
+            <td class="py-2 px-3 font-mono text-slate-400 truncate max-w-[120px]">${assignedName}</td>
+            <td class="py-2 px-3 text-right">
+              <button onclick="openModal(${inc.id})" class="px-2 py-0.5 bg-[#1c2333] hover:bg-[#242c3f] border border-[#242c3f] text-slate-300 rounded-resq text-[11px] font-mono">
+                View
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function getFilteredIncidents() {
+      const fStatus = document.getElementById('filter-status').value;
+      const fCat = document.getElementById('filter-category').value;
+      const fSev = document.getElementById('filter-severity').value;
+
+      return incidents.filter(i => {
+        if (fStatus !== 'All' && i.status !== fStatus) return false;
+        if (fCat !== 'All' && i.category !== fCat) return false;
+        if (fSev !== 'All' && i.final_severity !== fSev) return false;
+        return true;
+      });
+    }
+
+    function applyFilters() {
+      renderDenseTable();
+    }
+
+    function updateTacticalMap() {
+      if (!map) return;
+      incidents.forEach(inc => {
+        const isCritical = inc.final_severity === 'Critical';
+        const color = isCritical ? '#dc2626' : '#d97706';
+
+        if (!markers[inc.id]) {
+          const icon = L.divIcon({
+            className: 'custom-icon',
+            html: `<div style="background-color:${color}; width:16px; height:16px; border-radius:2px; border:1px solid white;"></div>`,
+            iconSize: [16, 16]
+          });
+          const m = L.marker([inc.lat, inc.lng], { icon }).addTo(map);
+          m.bindPopup(`<b>RQ-${String(inc.id).padStart(4, '0')}</b><br>${inc.title}`);
+          markers[inc.id] = m;
+        } else {
+          markers[inc.id].setLatLng([inc.lat, inc.lng]);
+        }
+      });
+    }
+
+    // SCREEN 3: INCIDENT DETAIL MODAL
+    function openModal(id) {
+      selectedIncidentId = id;
+      const inc = incidents.find(i => i.id === id);
+      if (!inc) return;
+
+      document.getElementById('modal-id').innerText = `RQ-${String(inc.id).padStart(4, '0')}`;
+      document.getElementById('modal-title').innerText = inc.title;
+      document.getElementById('modal-location').innerText = `📍 ${inc.landmark || 'GPS Pin'} (${inc.lat.toFixed(4)}, ${inc.lng.toFixed(4)})`;
+      document.getElementById('modal-desc').innerText = inc.description;
+      document.getElementById('modal-affected').innerText = `${inc.people_affected} people`;
+      document.getElementById('modal-trust').innerText = `${inc.trust_score}%`;
+      document.getElementById('modal-status-select').value = inc.status;
+
+      const badge = document.getElementById('modal-severity-badge');
+      badge.innerText = inc.final_severity.toUpperCase();
+      badge.className = `font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq border ${
+        inc.final_severity === 'Critical' ? 'bg-red-500/20 text-red-500 border-red-500/50' : 'bg-amber-500/20 text-amber-500 border-amber-500/50'
+      }`;
+
+      // Photo
+      document.getElementById('modal-photo').src = `/api/reports/${inc.id}/photo`;
+
+      // Timeline
+      const timeStr = new Date(inc.created_at).toTimeString().substring(0, 5);
+      const incDispatches = dispatches.filter(d => d.incident_id === id);
+      const claimedDisp = incDispatches.find(d => d.claimed_by);
+
+      document.getElementById('modal-timeline').innerHTML = `
+        <div class="flex items-center justify-between"><span class="text-emerald-400">● Reported:</span> <span>${timeStr}</span></div>
+        <div class="flex items-center justify-between"><span class="text-blue-400">● Alert sent:</span> <span>${timeStr}</span></div>
+        <div class="flex items-center justify-between"><span class="text-purple-400">● Acknowledged / Claimed:</span> <span>${claimedDisp ? (claimedDisp.responder_name || 'Claimed') : '—'}</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">● Current Status:</span> <b class="text-white">${inc.status}</b></div>
+      `;
+
+      document.getElementById('detail-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('detail-modal').classList.add('hidden');
+    }
+
+    async function saveModalStatus() {
+      if (!selectedIncidentId) return;
+      const newStatus = document.getElementById('modal-status-select').value;
+      try {
+        const res = await fetch(`/api/reports/${selectedIncidentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) {
+          closeModal();
+          pollAdminData();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function deleteModalIncident() {
+      if (!selectedIncidentId) return;
+      if (!confirm(`Confirm deletion of Incident RQ-${String(selectedIncidentId).padStart(4, '0')}? This action cannot be undone.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/reports/${selectedIncidentId}`, { method: 'DELETE' });
+        if (res.ok) {
+          closeModal();
+          pollAdminData();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      pollAdminData();
+      setInterval(pollAdminData, 2500); // 2.5s auto-refresh
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResQHub — Live Dispatch Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/i18n.js"></script>
+</head>
+<body class="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex flex-col font-sans pb-12 selection:bg-red-600 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-4 py-2.5 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-2">
+      <a href="/" class="p-1.5 rounded-resq bg-[var(--bg-card)] border border-[var(--border-color)] text-xs font-mono font-bold hover:border-red-600">
+        ← New
+      </a>
+      <div>
+        <h1 class="font-extrabold text-sm leading-tight">Live Dispatch Tracker</h1>
+        <p class="text-[10px] text-[var(--text-muted)] font-mono">Incident #{{ incident_id }} (RQ-{{ "%04d"|format(incident_id) }})</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Language Switcher -->
+      <div class="flex items-center bg-[var(--bg-card-subtle)] border border-[var(--border-color)] p-0.5 rounded-resq">
+        <button id="lang-en-btn" onclick="setLanguage('en')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-bold">EN</button>
+        <button id="lang-ta-btn" onclick="setLanguage('ta')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-medium">தமிழ்</button>
+      </div>
+      <button onclick="toggleTheme()" class="p-1.5 rounded-resq border border-[var(--border-color)] bg-[var(--bg-card)] text-xs">
+        <span id="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-4">
+
+    <!-- Incident Overview Card -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-3 shadow-sm">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-mono text-xs font-bold text-red-500" id="tracking-badge">RQ-{{ "%04d"|format(incident_id) }}</span>
+            <span id="severity-badge" class="font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq border">CRITICAL</span>
+          </div>
+          <h2 id="incident-title" class="text-base font-bold text-[var(--text-primary)]">Loading Incident...</h2>
+          <p id="incident-location" class="text-xs text-[var(--text-muted)] font-mono mt-0.5">Fetching location...</p>
+        </div>
+
+        <span id="status-pill" class="font-mono text-xs font-bold px-2.5 py-1 rounded-resq bg-blue-500/15 text-blue-500 border border-blue-500/30">
+          Reported
+        </span>
+      </div>
+
+      <!-- Real-time Status Stepper -->
+      <div class="grid grid-cols-4 gap-1.5 pt-2 text-center text-[10px] font-mono font-bold">
+        <div id="step-reported" class="p-2 rounded-resq bg-blue-600 text-white">1. Reported</div>
+        <div id="step-assigned" class="p-2 rounded-resq bg-[var(--bg-card-subtle)] text-[var(--text-muted)] border border-[var(--border-color)]">2. Assigned</div>
+        <div id="step-enroute" class="p-2 rounded-resq bg-[var(--bg-card-subtle)] text-[var(--text-muted)] border border-[var(--border-color)]">3. En Route</div>
+        <div id="step-resolved" class="p-2 rounded-resq bg-[var(--bg-card-subtle)] text-[var(--text-muted)] border border-[var(--border-color)]">4. Resolved</div>
+      </div>
+    </div>
+
+    <!-- Live Responder Unit Card -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-3 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Emergency Unit Claim Status</h3>
+        <span id="dispatch-count" class="font-mono text-[11px] font-bold text-blue-500">Checking alerts...</span>
+      </div>
+
+      <div class="p-3.5 rounded-resq bg-[var(--bg-card-subtle)] border border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div>
+          <div id="unit-name" class="font-bold text-xs text-[var(--text-primary)]">Broadcasting to nearby responders...</div>
+          <div id="unit-station" class="text-[11px] text-[var(--text-muted)] mt-0.5">Open broadcast active across registered emergency units</div>
+          <div id="unit-phone" class="text-xs text-blue-500 font-mono font-bold mt-1"></div>
+        </div>
+
+        <div class="text-center sm:text-right shrink-0">
+          <div id="eta-display" class="font-mono text-2xl font-bold text-red-500">--</div>
+          <span class="text-[9px] uppercase font-mono tracking-wider text-[var(--text-muted)]">Estimated ETA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Leaflet Map & Dotted Route -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-4 space-y-2 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Live GPS Map & Route</h3>
+        <span id="route-dist-text" class="text-xs font-mono font-bold text-blue-500">Distance: Calculating...</span>
+      </div>
+      <div id="track-map" class="w-full h-64 rounded-resq border border-[var(--border-color)] z-10"></div>
+    </div>
+
+  </main>
+
+  <script>
+    const incidentId = {{ incident_id }};
+    let map = null;
+    let incidentMarker = null;
+    let responderMarker = null;
+    let routeLine = null;
+
+    function initMap(lat, lng) {
+      if (map) return;
+      map = L.map('track-map').setView([lat, lng], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+      const redIcon = L.divIcon({
+        className: 'custom-icon',
+        html: `<div style="background-color:#dc2626; width:20px; height:20px; border-radius:4px; border:2px solid white; box-shadow:0 0 8px rgba(220,38,38,0.8);"></div>`,
+        iconSize: [20, 20]
+      });
+      incidentMarker = L.marker([lat, lng], { icon: redIcon }).addTo(map).bindPopup("<b>Emergency Location</b>");
+    }
+
+    async function pollTracking() {
+      try {
+        const res = await fetch(`/api/track/${incidentId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const inc = data.incident;
+        const dispatches = data.dispatches || [];
+        const alertsCount = data.alerts_sent || 0;
+
+        document.getElementById('incident-title').innerText = inc.title;
+        document.getElementById('incident-location').innerText = `📍 ${inc.landmark || 'GPS Pin'} (${inc.lat.toFixed(4)}, ${inc.lng.toFixed(4)})`;
+        document.getElementById('status-pill').innerText = inc.status;
+
+        const sevBadge = document.getElementById('severity-badge');
+        sevBadge.innerText = inc.final_severity.toUpperCase();
+        if (inc.final_severity === "Critical") {
+          sevBadge.className = "font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq bg-red-500/20 text-red-600 border border-red-500/50";
+        } else if (inc.final_severity === "High") {
+          sevBadge.className = "font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq bg-amber-500/20 text-amber-600 border border-amber-500/50";
+        } else if (inc.final_severity === "Medium") {
+          sevBadge.className = "font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq bg-yellow-500/20 text-yellow-600 border border-yellow-500/50";
+        } else {
+          sevBadge.className = "font-mono text-[10px] font-bold px-2 py-0.5 rounded-resq bg-emerald-500/20 text-emerald-600 border border-emerald-500/50";
+        }
+
+        // Stepper
+        const st = inc.status;
+        const stepR = document.getElementById('step-reported');
+        const stepA = document.getElementById('step-assigned');
+        const stepE = document.getElementById('step-enroute');
+        const stepRes = document.getElementById('step-resolved');
+
+        const activeClass = "p-2 rounded-resq bg-blue-600 text-white font-bold";
+        const doneClass = "p-2 rounded-resq bg-emerald-600 text-white font-bold";
+        const inactiveClass = "p-2 rounded-resq bg-[var(--bg-card-subtle)] text-[var(--text-muted)] border border-[var(--border-color)]";
+
+        stepR.className = (st === "Reported") ? activeClass : doneClass;
+        stepA.className = (st === "Assigned") ? activeClass : (st === "In Progress" || st === "Resolved") ? doneClass : inactiveClass;
+        stepE.className = (st === "In Progress") ? activeClass : (st === "Resolved") ? doneClass : inactiveClass;
+        stepRes.className = (st === "Resolved") ? doneClass : inactiveClass;
+
+        // Alerts count
+        const countBox = document.getElementById('dispatch-count');
+        if (alertsCount > 0) {
+          countBox.innerText = `${alertsCount} units notified`;
+          countBox.className = "font-mono text-[11px] font-bold text-emerald-500";
+        } else {
+          countBox.innerText = "Queued (Waiting for unit)";
+          countBox.className = "font-mono text-[11px] font-bold text-amber-500";
+        }
+
+        initMap(inc.lat, inc.lng);
+
+        const claimed = dispatches.find(d => d.claimed_by !== null);
+        if (claimed && claimed.responder_name) {
+          document.getElementById('unit-name').innerText = claimed.responder_name;
+          document.getElementById('unit-station').innerText = `${claimed.station_name} • Unit: ${claimed.unit_type} • Status: ${claimed.status}`;
+          document.getElementById('unit-phone').innerText = `📞 Emergency Direct: ${claimed.responder_phone}`;
+          document.getElementById('eta-display').innerText = `${claimed.eta_minutes || 4}m`;
+          document.getElementById('route-dist-text').innerText = `Route: ${claimed.distance_km || 0} km`;
+
+          const blueIcon = L.divIcon({
+            className: 'custom-icon',
+            html: `<div style="background-color:#2563eb; width:20px; height:20px; border-radius:4px; border:2px solid white; box-shadow:0 0 8px rgba(37,99,235,0.8);"></div>`,
+            iconSize: [20, 20]
+          });
+
+          if (claimed.responder_lat && claimed.responder_lng) {
+            const respLatLng = [claimed.responder_lat, claimed.responder_lng];
+            if (!responderMarker) {
+              responderMarker = L.marker(respLatLng, { icon: blueIcon }).addTo(map).bindPopup(`<b>${claimed.responder_name}</b>`);
+            } else {
+              responderMarker.setLatLng(respLatLng);
+            }
+
+            if (routeLine) map.removeLayer(routeLine);
+            routeLine = L.polyline([[inc.lat, inc.lng], respLatLng], {
+              color: '#2563eb',
+              weight: 3,
+              dashArray: '6, 6'
+            }).addTo(map);
+
+            map.fitBounds([[inc.lat, inc.lng], respLatLng], { padding: [40, 40] });
+          }
+        }
+      } catch (err) {
+        console.error("Polling tracker error:", err);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      pollTracking();
+      setInterval(pollTracking, 2500);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ResQHub — Responder App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/i18n.js"></script>
+</head>
+<body class="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex flex-col font-sans pb-16 selection:bg-red-600 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-4 py-2.5 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-resq bg-blue-600 text-white flex items-center justify-center font-mono font-bold text-xs">
+        RESP
+      </div>
+      <div>
+        <h1 class="font-extrabold text-sm leading-tight">ResQHub Dispatch</h1>
+        <p class="text-[10px] text-[var(--text-muted)] font-mono" id="responder-profile-text">Unit: Loading...</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- 5 Seeded Responder Switcher -->
+      <select id="unit-switcher" onchange="switchResponderUnit()" class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq text-xs px-2 py-1 font-mono text-[var(--text-primary)]">
+        <option value="1">Karthik (Ambulance 01)</option>
+        <option value="2">Praveen (Ambulance 02)</option>
+        <option value="3">Senthil (Ambulance 03)</option>
+        <option value="5">Murugan (Fire Engine 01)</option>
+        <option value="6">Venkatesh (Fire Engine 02)</option>
+      </select>
+
+      <!-- Language Switcher -->
+      <div class="flex items-center bg-[var(--bg-card-subtle)] border border-[var(--border-color)] p-0.5 rounded-resq">
+        <button id="lang-en-btn" onclick="setLanguage('en')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-bold">EN</button>
+        <button id="lang-ta-btn" onclick="setLanguage('ta')" class="px-1.5 py-0.5 rounded-resq text-[10px] font-medium">தமிழ்</button>
+      </div>
+
+      <button onclick="toggleTheme()" class="p-1 rounded-resq border border-[var(--border-color)] bg-[var(--bg-card)] text-xs">
+        <span id="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-box" class="fixed top-14 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+    <div id="toast-msg" class="hidden transition transform px-4 py-2.5 rounded-resq text-xs font-bold shadow-lg border"></div>
+  </div>
+
+  <main class="flex-1 max-w-lg mx-auto w-full px-4 py-4 space-y-4">
+
+    <!-- Active Unit Status Bar -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-resq p-3.5 shadow-sm flex items-center justify-between">
+      <div>
+        <span class="text-[10px] uppercase font-bold text-[var(--text-muted)] block">Operational Status</span>
+        <div class="flex items-center gap-2 mt-0.5">
+          <span id="unit-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <span id="unit-status-text" class="text-xs font-mono font-bold text-[var(--text-primary)]">Available</span>
+        </div>
+      </div>
+      <button onclick="toggleMyStatus()" class="px-2.5 py-1.5 bg-[var(--bg-card-subtle)] border border-[var(--border-color)] text-xs font-semibold rounded-resq hover:border-blue-600 transition">
+        Toggle Status
+      </button>
+    </div>
+
+    <!-- Incoming Emergency Alerts (Zomato First-Accept-Wins + 1 Active Task Guard) -->
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+          <span>📡</span>
+          <span>Broadcast Dispatches (<span id="alert-count" class="font-mono">0</span>)</span>
+        </h2>
+        <span class="text-[10px] text-emerald-500 font-mono">● Auto-polling 2.5s</span>
+      </div>
+
+      <div id="alerts-container" class="space-y-3">
+        <div class="p-8 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-card)] rounded-resq border border-[var(--border-color)]">
+          Scanning for broadcasted emergency dispatches...
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let activeResponderId = 1;
+    let alerts = [];
+
+    function showToast(message, type = "success") {
+      const box = document.getElementById('toast-msg');
+      box.innerText = message;
+      if (type === "success") {
+        box.className = "px-4 py-2.5 rounded-resq text-xs font-bold shadow-lg border bg-emerald-950 text-emerald-200 border-emerald-600 block";
+      } else {
+        box.className = "px-4 py-2.5 rounded-resq text-xs font-bold shadow-lg border bg-red-950 text-red-200 border-red-600 block";
+      }
+      setTimeout(() => { box.className = "hidden"; }, 4000);
+    }
+
+    async function loadAlerts() {
+      try {
+        const res = await fetch(`/api/responder/alerts?responder_id=${activeResponderId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const resp = data.responder;
+        alerts = data.alerts || [];
+
+        document.getElementById('responder-profile-text').innerText = `${resp.name} • ${resp.station_name}`;
+        document.getElementById('unit-status-text').innerText = resp.status;
+        document.getElementById('unit-status-dot').className = `w-2.5 h-2.5 rounded-full ${resp.status === 'Available' ? 'bg-emerald-500' : 'bg-amber-500'}`;
+        document.getElementById('alert-count').innerText = alerts.length;
+
+        renderAlerts(resp);
+      } catch (err) {
+        console.error("Alerts polling error:", err);
+      }
+    }
+
+    function renderAlerts(responder) {
+      const container = document.getElementById('alerts-container');
+
+      if (alerts.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-card)] rounded-resq border border-[var(--border-color)]">
+            <span class="text-2xl block mb-1">🛡️</span>
+            No active emergencies currently awaiting your unit type.
+          </div>
+        `;
+        return;
+      }
+
+      // Check if this driver currently has any active uncompleted task
+      const myActiveTask = alerts.find(a => a.is_claimed_by_me && a.dispatch_status !== 'Completed');
+
+      container.innerHTML = alerts.map(a => {
+        const isClaimedByMe = a.is_claimed_by_me;
+        const isClaimedByOther = (a.claimed_by && !isClaimedByMe);
+        const isCritical = a.final_severity === "Critical";
+        const currentDispatchStatus = a.dispatch_status; // 'Claimed', 'En Route', 'Arrived', 'Completed'
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${a.lat},${a.lng}`;
+
+        // Calculate severity bar border class
+        let sevBorderClass = "border-l-4 border-l-gray-500";
+        if (a.final_severity === "Critical") sevBorderClass = "border-l-4 border-l-[#dc2626]";
+        else if (a.final_severity === "High") sevBorderClass = "border-l-4 border-l-[#d97706]";
+        else if (a.final_severity === "Medium") sevBorderClass = "border-l-4 border-l-[#ca8a04]";
+        else if (a.final_severity === "Low") sevBorderClass = "border-l-4 border-l-[#4d7c0f]";
+
+        // Button sequence states:
+        // When 'Claimed': En Route enabled, Arrived disabled, Completed disabled
+        // When 'En Route': En Route done, Arrived enabled, Completed disabled
+        // When 'Arrived': En Route done, Arrived done, Completed enabled
+        // When 'Completed': All done
+        const canEnRoute = isClaimedByMe && (currentDispatchStatus === 'Claimed');
+        const canArrived = isClaimedByMe && (currentDispatchStatus === 'En Route');
+        const canCompleted = isClaimedByMe && (currentDispatchStatus === 'Arrived');
+        const isFinished = isClaimedByMe && (currentDispatchStatus === 'Completed');
+
+        return `
+          <div class="bg-[var(--bg-card)] border border-[var(--border-color)] ${sevBorderClass} rounded-resq p-3.5 space-y-2.5 shadow-sm ${isClaimedByOther ? 'opacity-50' : ''}">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-1.5 mb-0.5">
+                  <span class="font-mono text-xs font-bold text-red-500">${a.final_severity.toUpperCase()}</span>
+                  <span class="font-mono text-[10px] text-[var(--text-muted)]">RQ-${a.incident_id}</span>
+                  <span class="text-[10px] font-mono text-blue-500 font-semibold">📍 ${a.distance_km} km</span>
+                </div>
+                <h3 class="font-bold text-xs text-[var(--text-primary)]">${a.title}</h3>
+                <p class="text-[11px] text-[var(--text-muted)] font-mono">${a.landmark || 'GPS Coordinates'}</p>
+              </div>
+
+              <div class="text-right">
+                <span class="font-mono text-base font-bold text-red-500">${a.eta_minutes}m</span>
+                <span class="text-[9px] uppercase tracking-wider block text-[var(--text-muted)]">ETA</span>
+              </div>
+            </div>
+
+            <p class="text-xs text-[var(--text-secondary)] bg-[var(--bg-card-subtle)] p-2 rounded-resq border border-[var(--border-color)]">
+              ${a.description}
+            </p>
+
+            <div class="flex items-center justify-between text-[11px] font-mono text-[var(--text-muted)]">
+              <span>Affected: <b class="text-[var(--text-primary)]">${a.people_affected}</b></span>
+              <span>Status: <b class="text-blue-500">${currentDispatchStatus}</b></span>
+            </div>
+
+            <!-- ACTION BUTTONS -->
+            <div class="pt-1">
+              ${isClaimedByOther ? `
+                <div class="p-2 rounded-resq bg-[var(--bg-card-subtle)] text-[var(--text-muted)] text-xs text-center font-medium">
+                  ⚠️ Claimed by ${a.claimed_by_name || 'another responder'}
+                </div>
+              ` : isClaimedByMe ? `
+                <div class="space-y-2">
+                  <div class="p-2 rounded-resq bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold text-xs text-center">
+                    ✓ Task Claimed — Progress Lifecycle Below:
+                  </div>
+
+                  <!-- 3 STRICT SEQUENCE STATUS BUTTONS -->
+                  <div class="grid grid-cols-3 gap-1.5 text-xs">
+                    <!-- 1. En Route -->
+                    <button 
+                      onclick="updateDispatchProgress(${a.dispatch_id}, 'En Route')"
+                      ${!canEnRoute ? 'disabled' : ''}
+                      class="py-2.5 px-2 rounded-resq font-bold transition flex items-center justify-center gap-1 ${
+                        currentDispatchStatus === 'En Route' || currentDispatchStatus === 'Arrived' || isFinished
+                          ? 'bg-blue-900/60 text-blue-200 border border-blue-600/50'
+                          : canEnRoute
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-sm'
+                          : 'bg-[var(--bg-card-subtle)] text-[var(--text-muted)] opacity-40 cursor-not-allowed border border-[var(--border-color)]'
+                      }"
+                    >
+                      ${currentDispatchStatus === 'En Route' || currentDispatchStatus === 'Arrived' || isFinished ? '✓ ' : ''}En Route
+                    </button>
+
+                    <!-- 2. Arrived -->
+                    <button 
+                      onclick="updateDispatchProgress(${a.dispatch_id}, 'Arrived')"
+                      ${!canArrived ? 'disabled' : ''}
+                      class="py-2.5 px-2 rounded-resq font-bold transition flex items-center justify-center gap-1 ${
+                        currentDispatchStatus === 'Arrived' || isFinished
+                          ? 'bg-purple-900/60 text-purple-200 border border-purple-600/50'
+                          : canArrived
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer shadow-sm'
+                          : 'bg-[var(--bg-card-subtle)] text-[var(--text-muted)] opacity-40 cursor-not-allowed border border-[var(--border-color)]'
+                      }"
+                    >
+                      ${currentDispatchStatus === 'Arrived' || isFinished ? '✓ ' : ''}Arrived
+                    </button>
+
+                    <!-- 3. Completed -->
+                    <button 
+                      onclick="updateDispatchProgress(${a.dispatch_id}, 'Completed')"
+                      ${!canCompleted ? 'disabled' : ''}
+                      class="py-2.5 px-2 rounded-resq font-bold transition flex items-center justify-center gap-1 ${
+                        isFinished
+                          ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-600/50'
+                          : canCompleted
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-sm'
+                          : 'bg-[var(--bg-card-subtle)] text-[var(--text-muted)] opacity-40 cursor-not-allowed border border-[var(--border-color)]'
+                      }"
+                    >
+                      ${isFinished ? '✓ ' : ''}Completed
+                    </button>
+                  </div>
+
+                  <div class="flex items-center gap-2 pt-1">
+                    <a href="${navUrl}" target="_blank" class="flex-1 py-1.5 px-2 rounded-resq bg-[var(--bg-card-subtle)] border border-[var(--border-color)] text-center text-xs font-semibold text-blue-500 hover:underline">
+                      🗺️ Google Maps Directions
+                    </a>
+                    ${!isFinished ? `
+                      <button onclick="releaseClaim(${a.dispatch_id})" class="py-1.5 px-2.5 rounded-resq border border-red-500/40 text-red-500 text-xs font-semibold hover:bg-red-500/10">
+                        Release Claim
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              ` : `
+                <!-- ACCEPT CLAIM BUTTON WITH 1-ACTIVE-TASK ENFORCEMENT -->
+                <button 
+                  onclick="acceptEmergency(${a.dispatch_id})"
+                  ${myActiveTask ? 'disabled' : ''}
+                  class="w-full py-2.5 px-3 rounded-resq font-bold text-xs transition flex items-center justify-center gap-1.5 ${
+                    myActiveTask 
+                      ? 'bg-[var(--bg-card-subtle)] text-[var(--text-muted)] opacity-50 cursor-not-allowed border border-[var(--border-color)]' 
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm cursor-pointer'
+                  }"
+                >
+                  ${myActiveTask ? '⏳ Finish your current task first' : '🚨 Accept Dispatch Claim'}
+                </button>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 1. Accept Dispatch
+    async function acceptEmergency(dispatchId) {
+      try {
+        const res = await fetch(`/api/responder/dispatch/${dispatchId}/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ responder_id: activeResponderId })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(data.message || "Dispatch accepted!", "success");
+          loadAlerts();
+        } else if (res.status === 409) {
+          showToast(data.message || data.error, "error");
+          loadAlerts();
+        } else {
+          showToast(data.error || "Failed to accept dispatch", "error");
+        }
+      } catch (err) {
+        showToast("Network error: " + err.message, "error");
+      }
+    }
+
+    // 2. Progression: En Route -> Arrived -> Completed
+    async function updateDispatchProgress(dispatchId, status) {
+      try {
+        const res = await fetch(`/api/responder/dispatch/${dispatchId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(`Task status updated to "${status}"`, "success");
+          loadAlerts();
+        } else {
+          showToast(data.message || data.error || "Status update rejected", "error");
+        }
+      } catch (err) {
+        showToast("Network update error: " + err.message, "error");
+      }
+    }
+
+    // Release Claim
+    async function releaseClaim(dispatchId) {
+      if (!confirm("Release this emergency back to open broadcast pool?")) return;
+      try {
+        const res = await fetch(`/api/responder/dispatch/${dispatchId}/release`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast("Emergency released back to open pool", "success");
+          loadAlerts();
+        } else {
+          showToast(data.error || "Failed to release", "error");
+        }
+      } catch (err) {
+        showToast("Error: " + err.message, "error");
+      }
+    }
+
+    // Toggle Availability
+    async function toggleMyStatus() {
+      try {
+        const res = await fetch(`/api/responders/${activeResponderId}/toggle-status`, { method: 'POST' });
+        if (res.ok) loadAlerts();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function switchResponderUnit() {
+      activeResponderId = parseInt(document.getElementById('unit-switcher').value);
+      loadAlerts();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadAlerts();
+      setInterval(loadAlerts, 2500); // 2.5s live polling
+    });
+  </script>
+</body>
+</html>
